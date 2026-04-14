@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pi Wellrox Agent</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Startup Overlay -->
+  <div id="startup-overlay">
+    <div class="startup-card" id="startup-content">
+      <h1>Pi Wellrox Agent</h1>
+      <p>Connecting...</p>
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- Chat Interface -->
+  <div id="chat-container">
+    <div class="chat-header">
+      <h2>Pi</h2>
+      <span class="model-badge"></span>
+    </div>
+    <div class="messages"></div>
+    <div class="input-area">
+      <div class="input-wrapper">
+        <textarea
+          id="message-input"
+          placeholder="Message Pi..."
+          rows="1"
+        ></textarea>
+        <button class="send-btn" id="send-btn" title="Send">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
