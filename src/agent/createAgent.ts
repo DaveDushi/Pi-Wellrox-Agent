@@ -55,7 +55,6 @@ async function doInitAgent(): Promise<void> {
   const settings = await readSettings();
   const authStorage = getAuthStorage();
   const modelRegistry = getModelRegistry();
-  const systemPrompt = buildSystemPrompt();
   const projectSkills = await discoverSkills();
 
   const modelId = settings.defaultModel;
@@ -66,7 +65,7 @@ async function doInitAgent(): Promise<void> {
     : undefined;
 
   const loader = new DefaultResourceLoader({
-    systemPromptOverride: () => systemPrompt,
+    systemPromptOverride: () => buildSystemPrompt(),
     skillsOverride: (current) => ({
       skills: [...current.skills, ...projectSkills],
       diagnostics: current.diagnostics,

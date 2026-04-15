@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { fileURLToPath } from "url";
-import { dirname, join, resolve } from "path";
+import { dirname, join } from "path";
 import { access, unlink } from "fs/promises";
 import { startServer } from "../main.js";
 import {
@@ -20,8 +20,6 @@ import {
   OUTPUT_DIR,
   generateJobId,
   getUploadPath,
-  getOutputPath,
-  getOutputFilename,
 } from "../fileManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,12 +27,6 @@ const __dirname = dirname(__filename);
 
 const PORT = 3141;
 let mainWindow: BrowserWindow | null = null;
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 // --- IPC Handlers ---
 
@@ -113,73 +105,17 @@ function registerIpcHandlers() {
     return { ok: true };
   });
 
-  // Process video — streaming via IPC events
-  ipcMain.on("agent:process-video", async (event, data) => {
-    const { selectedMedia, description } = data;
+  // Agent chat — streaming via IPC events
+  ipcMain.on("agent:chat", async (event, data) => {
+    const { description } = data;
     const sender = event.sender;
 
-    const clips: {
-      letter: string;
-      item: registry.MediaItem;
-      inPoint?: number;
-      outPoint?: number;
-    }[] = [];
-
-    for (let i = 0; i < selectedMedia.length; i++) {
-      const sel = selectedMedia[i];
-      const item = registry.get(sel.id);
-      if (!item) {
-        sender.send("agent:error", {
-          message: `Media item ${sel.id} not found`,
-        });
-        return;
-      }
-      clips.push({
-        letter: String.fromCharCode(65 + i),
-        item,
-        inPoint: sel.inPoint,
-        outPoint: sel.outPoint,
-      });
+    if (!description?.trim()) {
+      sender.send("agent:error", { message: "description is required" });
+      return;
     }
 
-    const jobId = generateJobId();
-    const outputPath = resolve(getOutputPath(jobId));
-    const outputFilename = getOutputFilename(jobId);
-
-    const clipLines = clips.map((cl) => {
-      const absPath =
-        cl.item.type === "upload"
-          ? resolve(getUploadPath(cl.item.filename))
-          : resolve(join(OUTPUT_DIR, cl.item.filename));
-
-      let range = "(full clip)";
-      if (cl.inPoint != null && cl.outPoint != null) {
-        range = `(use range ${formatTime(cl.inPoint)} to ${formatTime(cl.outPoint)} only)`;
-      } else if (cl.inPoint != null) {
-        range = `(start from ${formatTime(cl.inPoint)})`;
-      } else if (cl.outPoint != null) {
-        range = `(use up to ${formatTime(cl.outPoint)})`;
-      }
-
-      return `  [${cl.letter}] "${cl.item.label}" — ${absPath} ${range}`;
-    });
-
-    const prompt = [
-      `The user has selected the following video file${clips.length > 1 ? "s" : ""} for this task:`,
-      ``,
-      ...clipLines,
-      ``,
-      `They want the following changes: "${description}"`,
-      ``,
-      `Save the output video to: ${outputPath}`,
-      `The output MUST be MP4 format (H.264 video + AAC audio) for browser playback.`,
-      `Use FFmpeg to process the video. If FFmpeg is not available, tell the user.`,
-      ``,
-      `When the output file has been successfully created and verified, output this exact line on its own:`,
-      `OUTPUT_READY:${outputFilename}`,
-    ].join("\n");
-
-    const parentIds = clips.map((cl) => cl.item.id);
+    const prompt = description.trim();
     let accumulatedText = "";
     let outputDetected = false;
 
@@ -193,7 +129,9 @@ function registerIpcHandlers() {
           outputDetected = true;
           const match = accumulatedText.match(/OUTPUT_READY:(\S+)/);
           if (match) {
-            const url = `/media/output/${match[1]}`;
+            const outputFilename = match[1];
+            const jobId = generateJobId();
+            const url = `/media/output/${outputFilename}`;
             registry
               .register({
                 id: jobId,
@@ -202,7 +140,6 @@ function registerIpcHandlers() {
                 label:
                   description.slice(0, 60) +
                   (description.length > 60 ? "..." : ""),
-                parentIds,
                 url,
                 description,
               })

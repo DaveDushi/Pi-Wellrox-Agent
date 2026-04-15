@@ -16,8 +16,7 @@ contextBridge.exposeInMainWorld("api", {
     remove: (id: string) => ipcRenderer.invoke("media:delete", id),
   },
   agent: {
-    processVideo: (data: any) =>
-      ipcRenderer.send("agent:process-video", data),
+    chat: (data: any) => ipcRenderer.send("agent:chat", data),
     resetSession: () => ipcRenderer.invoke("agent:reset"),
   },
   on: (channel: string, callback: (...args: any[]) => void) => {

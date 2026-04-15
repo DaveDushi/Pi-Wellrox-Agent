@@ -253,7 +253,8 @@ function enterEditor() {
     updateSendButton();
   });
   chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !$("#send-btn").disabled) {
+    if (e.key === "Enter" && !e.shiftKey && !$("#send-btn").disabled
+        && !$("#mention-dropdown").classList.contains("visible")) {
       e.preventDefault();
       sendChatMessage();
     }
@@ -597,29 +598,146 @@ function renderAttachmentBar() {
 
 function updateChatInputState() {
   const input = $("#chat-input");
-  const hasMedia = state.mediaItems.length > 0;
-  input.disabled = !hasMedia || state.processing;
-
-  if (!hasMedia) {
-    input.placeholder = "Upload videos to get started...";
-  } else if (state.attachedIds.length === 0) {
-    input.placeholder = "Attach clips, then describe your edit...";
-  } else if (state.attachedIds.length === 1) {
-    input.placeholder = "Describe changes to this clip...";
-  } else {
-    const letters = state.attachedIds.map((_, i) => String.fromCharCode(65 + i)).join(", ");
-    input.placeholder = `Describe what to do with clips ${letters}...`;
-  }
-
+  input.disabled = state.processing;
+  input.placeholder = "Message Pi...";
   updateSendButton();
 }
 
 function updateSendButton() {
   const btn = $("#send-btn");
   const hasText = ($("#chat-input").value || "").trim().length > 0;
-  const hasClips = state.attachedIds.length > 0;
-  btn.disabled = (!hasText || !hasClips) && !state.chatStreaming;
+  btn.disabled = !hasText && !state.chatStreaming;
 }
+
+// =====================
+// @ Mention Autocomplete
+// =====================
+
+(function initMentionAutocomplete() {
+  const input = $("#chat-input");
+  const dropdown = $("#mention-dropdown");
+  let mentionStart = -1;
+  let activeIndex = 0;
+
+  function getQuery() {
+    if (mentionStart < 0) return null;
+    const val = input.value;
+    const cursor = input.selectionStart;
+    if (cursor <= mentionStart) return null;
+    return val.slice(mentionStart + 1, cursor).toLowerCase();
+  }
+
+  function getFilteredItems(query) {
+    if (query === null) return [];
+    if (!state.mediaItems.length) return [];
+    if (query === "") return state.mediaItems.slice(0, 10);
+    return state.mediaItems.filter((item) =>
+      item.label.toLowerCase().includes(query)
+    ).slice(0, 10);
+  }
+
+  function render(items) {
+    if (items.length === 0 && mentionStart >= 0) {
+      dropdown.innerHTML = '<div class="mention-empty">No matching media</div>';
+      dropdown.classList.add("visible");
+      return;
+    }
+    if (items.length === 0) {
+      hide();
+      return;
+    }
+    activeIndex = Math.min(activeIndex, items.length - 1);
+    dropdown.innerHTML = items
+      .map((item, i) =>
+        `<div class="mention-item${i === activeIndex ? " active" : ""}" data-label="${escapeAttr(item.label)}">
+          <span class="mention-type">${item.type}</span>
+          <span class="mention-label">${escapeHtml(item.label)}</span>
+        </div>`
+      )
+      .join("");
+    dropdown.classList.add("visible");
+  }
+
+  function hide() {
+    dropdown.classList.remove("visible");
+    dropdown.innerHTML = "";
+    mentionStart = -1;
+    activeIndex = 0;
+  }
+
+  function apply(label) {
+    const before = input.value.slice(0, mentionStart);
+    const after = input.value.slice(input.selectionStart);
+    input.value = before + "@" + label + " " + after;
+    const newPos = mentionStart + 1 + label.length + 1;
+    input.setSelectionRange(newPos, newPos);
+    hide();
+    input.focus();
+    autoGrowTextarea(input);
+    updateSendButton();
+  }
+
+  input.addEventListener("input", () => {
+    const val = input.value;
+    const cursor = input.selectionStart;
+
+    if (mentionStart >= 0) {
+      const query = getQuery();
+      if (query === null) {
+        hide();
+      } else {
+        activeIndex = 0;
+        render(getFilteredItems(query));
+      }
+      return;
+    }
+
+    if (cursor > 0 && val[cursor - 1] === "@") {
+      const charBefore = cursor > 1 ? val[cursor - 2] : " ";
+      if (charBefore === " " || charBefore === "\n" || cursor === 1) {
+        mentionStart = cursor - 1;
+        activeIndex = 0;
+        render(getFilteredItems(""));
+      }
+    }
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (!dropdown.classList.contains("visible")) return;
+
+    const items = getFilteredItems(getQuery());
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+      render(items);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      render(items);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (items.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        apply(items[activeIndex].label);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      hide();
+    }
+  });
+
+  dropdown.addEventListener("click", (e) => {
+    const item = e.target.closest(".mention-item");
+    if (item) apply(item.dataset.label);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!dropdown.contains(e.target) && e.target !== input) {
+      hide();
+    }
+  });
+})();
 
 // =====================
 // Storyboard Strip
@@ -959,23 +1077,20 @@ function onUploadComplete(data) {
 function sendChatMessage() {
   const input = $("#chat-input");
   const text = (input.value || "").trim();
-  if (!text || state.attachedIds.length === 0 || state.processing) return;
+  if (!text || state.processing) return;
 
-  const clips = state.attachedIds.map((id, i) => {
-    const item = state.mediaItems.find((m) => m.id === id);
-    return {
-      id,
-      label: item?.label || "?",
-      letter: String.fromCharCode(65 + i),
-      inPoint: item?.inPoint ?? undefined,
-      outPoint: item?.outPoint ?? undefined,
-    };
-  });
+  const attachedItems = state.attachedIds
+    .map((id) => state.mediaItems.find((m) => m.id === id))
+    .filter(Boolean);
 
   state.chatMessages.push({
     role: "user",
     text,
-    clips: clips.map((c) => ({ id: c.id, label: c.label, letter: c.letter })),
+    clips: attachedItems.map((item, i) => ({
+      id: item.id,
+      label: item.label,
+      letter: String.fromCharCode(65 + i),
+    })),
   });
 
   renderChatMessages();
@@ -1193,19 +1308,23 @@ function sendChatMessage() {
   piApi.on("agent:done", handleDone);
   piApi.on("agent:error", handleError);
 
-  const selectedMedia = clips.map((c) => ({
-    id: c.id,
-    inPoint: c.inPoint,
-    outPoint: c.outPoint,
-  }));
+  let messageText = text;
+  if (attachedItems.length > 0) {
+    const fileRefs = attachedItems.map((item) => `@${item.label}`).join(", ");
+    messageText = `[Attached files: ${fileRefs}]\n${text}`;
+  }
+
+  state.attachedIds = [];
+  renderAttachmentBar();
+  renderMediaBin();
 
   if (isElectron) {
-    piApi.agent.processVideo({ selectedMedia, description: text });
+    piApi.agent.chat({ description: messageText });
   } else {
     fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ selectedMedia, description: text }),
+      body: JSON.stringify({ description: messageText }),
     })
       .then(async (response) => {
         const reader = response.body.getReader();

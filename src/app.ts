@@ -20,14 +20,6 @@ import {
   selectModel,
 } from "./agent/startup.js";
 import { handleChat, resetSession, type AgentEvent } from "./agent/createAgent.js";
-import { getOutputPath, getOutputFilename } from "./fileManager.js";
-import { resolve } from "path";
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -165,71 +157,13 @@ export function createApp(): Hono {
 
   app.post("/api/chat", async (c) => {
     const body = await c.req.json();
-    const { selectedMedia, description } = body;
+    const { description } = body;
 
-    if (!selectedMedia?.length || !description?.trim()) {
-      return c.json({ error: "selectedMedia and description are required" }, 400);
+    if (!description?.trim()) {
+      return c.json({ error: "description is required" }, 400);
     }
 
-    const clips: {
-      letter: string;
-      item: registry.MediaItem;
-      inPoint?: number;
-      outPoint?: number;
-    }[] = [];
-
-    for (let i = 0; i < selectedMedia.length; i++) {
-      const sel = selectedMedia[i];
-      const item = registry.get(sel.id);
-      if (!item) {
-        return c.json({ error: `Media item ${sel.id} not found` }, 404);
-      }
-      clips.push({
-        letter: String.fromCharCode(65 + i),
-        item,
-        inPoint: sel.inPoint,
-        outPoint: sel.outPoint,
-      });
-    }
-
-    const jobId = generateJobId();
-    const outputPath = resolve(getOutputPath(jobId));
-    const outputFilename = getOutputFilename(jobId);
-
-    const clipLines = clips.map((cl) => {
-      const absPath =
-        cl.item.type === "upload"
-          ? resolve(getUploadPath(cl.item.filename))
-          : resolve(join(OUTPUT_DIR, cl.item.filename));
-
-      let range = "(full clip)";
-      if (cl.inPoint != null && cl.outPoint != null) {
-        range = `(use range ${formatTime(cl.inPoint)} to ${formatTime(cl.outPoint)} only)`;
-      } else if (cl.inPoint != null) {
-        range = `(start from ${formatTime(cl.inPoint)})`;
-      } else if (cl.outPoint != null) {
-        range = `(use up to ${formatTime(cl.outPoint)})`;
-      }
-
-      return `  [${cl.letter}] "${cl.item.label}" — ${absPath} ${range}`;
-    });
-
-    const prompt = [
-      `The user has selected the following video file${clips.length > 1 ? "s" : ""} for this task:`,
-      ``,
-      ...clipLines,
-      ``,
-      `They want the following changes: "${description}"`,
-      ``,
-      `Save the output video to: ${outputPath}`,
-      `The output MUST be MP4 format (H.264 video + AAC audio) for browser playback.`,
-      `Use FFmpeg to process the video. If FFmpeg is not available, tell the user.`,
-      ``,
-      `When the output file has been successfully created and verified, output this exact line on its own:`,
-      `OUTPUT_READY:${outputFilename}`,
-    ].join("\n");
-
-    const parentIds = clips.map((cl) => cl.item.id);
+    const prompt = description.trim();
 
     return new Response(
       new ReadableStream({
@@ -252,7 +186,9 @@ export function createApp(): Hono {
                 outputDetected = true;
                 const match = accumulatedText.match(/OUTPUT_READY:(\S+)/);
                 if (match) {
-                  const url = `/media/output/${match[1]}`;
+                  const outputFilename = match[1];
+                  const jobId = generateJobId();
+                  const url = `/media/output/${outputFilename}`;
                   registry
                     .register({
                       id: jobId,
@@ -261,7 +197,6 @@ export function createApp(): Hono {
                       label:
                         description.slice(0, 60) +
                         (description.length > 60 ? "..." : ""),
-                      parentIds,
                       url,
                       description,
                     })
