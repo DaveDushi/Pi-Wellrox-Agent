@@ -6,13 +6,26 @@ import {
   type AgentSessionEvent,
   type Skill,
 } from "@mariozechner/pi-coding-agent";
-import { readdir } from "fs/promises";
+import { readdir, access, mkdir } from "fs/promises";
 import { join } from "path";
 import { readSettings } from "./sharedModel.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { getAuthStorage, getModelRegistry } from "./startup.js";
 
 let session: AgentSession | null = null;
+let sessionPromise: Promise<void> | null = null;
+let promptBusy = false;
+
+const SESSIONS_DIR = join(process.cwd(), ".pi", "sessions");
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function discoverSkills(): Promise<Skill[]> {
   const skillsDir = join(process.cwd(), "skills");
@@ -23,22 +36,22 @@ async function discoverSkills(): Promise<Skill[]> {
       if (!entry.isDirectory()) continue;
       const skillDir = join(skillsDir, entry.name);
       const skillFile = join(skillDir, "SKILL.md");
-      const file = Bun.file(skillFile);
-      if (await file.exists()) {
+      if (await fileExists(skillFile)) {
         skills.push({
           name: entry.name,
           description: `Skill: ${entry.name}`,
           filePath: skillFile,
           baseDir: skillDir,
-          source: "custom",
-        });
+        } as Skill);
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn("[agent] Failed to discover skills:", e);
+  }
   return skills;
 }
 
-export async function initAgent(): Promise<void> {
+async function doInitAgent(): Promise<void> {
   const settings = await readSettings();
   const authStorage = getAuthStorage();
   const modelRegistry = getModelRegistry();
@@ -61,8 +74,10 @@ export async function initAgent(): Promise<void> {
   });
   await loader.reload();
 
+  await mkdir(SESSIONS_DIR, { recursive: true });
+
   const result = await createAgentSession({
-    sessionManager: SessionManager.inMemory(),
+    sessionManager: SessionManager.create(process.cwd(), SESSIONS_DIR),
     resourceLoader: loader,
     authStorage,
     modelRegistry,
@@ -74,33 +89,100 @@ export async function initAgent(): Promise<void> {
   session = result.session;
 }
 
+async function ensureSession(): Promise<void> {
+  if (session) return;
+  if (!sessionPromise) {
+    sessionPromise = doInitAgent().finally(() => {
+      sessionPromise = null;
+    });
+  }
+  await sessionPromise;
+}
+
+export type AgentEvent =
+  | { kind: "thinking"; text: string }
+  | { kind: "tool_start"; tool: string }
+  | { kind: "tool_update"; text: string }
+  | { kind: "tool_end"; tool: string; success: boolean }
+  | { kind: "turn_start" }
+  | { kind: "turn_end" }
+  | { kind: "compaction_start" }
+  | { kind: "compaction_end" }
+  | { kind: "retry_start" }
+  | { kind: "retry_end" };
+
 export async function handleChat(
   userMessage: string,
   onDelta: (text: string) => void,
   onDone: () => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  onEvent?: (event: AgentEvent) => void
 ): Promise<void> {
-  if (!session) {
-    try {
-      await initAgent();
-    } catch (err) {
-      onError(err instanceof Error ? err : new Error(String(err)));
-      return;
-    }
+  if (promptBusy) {
+    onError(new Error("Agent is already processing a request. Please wait."));
+    return;
   }
 
+  try {
+    await ensureSession();
+  } catch (err) {
+    onError(err instanceof Error ? err : new Error(String(err)));
+    return;
+  }
+
+  promptBusy = true;
   let unsubscribe: (() => void) | null = null;
 
   try {
     unsubscribe = session!.subscribe((event: AgentSessionEvent) => {
-      if (
-        event.type === "message_update" &&
-        "assistantMessageEvent" in event
-      ) {
-        const msgEvent = (event as any).assistantMessageEvent;
-        if (msgEvent.type === "text_delta" && msgEvent.delta) {
-          onDelta(msgEvent.delta);
+      const ev = event as any;
+
+      switch (event.type) {
+        case "message_update": {
+          if ("assistantMessageEvent" in event) {
+            const msgEvent = ev.assistantMessageEvent;
+            if (msgEvent.type === "text_delta" && msgEvent.delta) {
+              onDelta(msgEvent.delta);
+            }
+            if (msgEvent.type === "thinking_delta" && msgEvent.delta) {
+              onEvent?.({ kind: "thinking", text: msgEvent.delta });
+            }
+          }
+          break;
         }
+        case "tool_execution_start":
+          onEvent?.({ kind: "tool_start", tool: ev.toolName ?? "unknown" });
+          break;
+        case "tool_execution_update":
+          if (ev.partialResult) {
+            onEvent?.({ kind: "tool_update", text: String(ev.partialResult) });
+          }
+          break;
+        case "tool_execution_end":
+          onEvent?.({
+            kind: "tool_end",
+            tool: ev.toolName ?? "unknown",
+            success: !ev.isError,
+          });
+          break;
+        case "turn_start":
+          onEvent?.({ kind: "turn_start" });
+          break;
+        case "turn_end":
+          onEvent?.({ kind: "turn_end" });
+          break;
+        case "compaction_start":
+          onEvent?.({ kind: "compaction_start" });
+          break;
+        case "compaction_end":
+          onEvent?.({ kind: "compaction_end" });
+          break;
+        case "auto_retry_start":
+          onEvent?.({ kind: "retry_start" });
+          break;
+        case "auto_retry_end":
+          onEvent?.({ kind: "retry_end" });
+          break;
       }
     });
 
@@ -109,6 +191,7 @@ export async function handleChat(
   } catch (error) {
     onError(error instanceof Error ? error : new Error(String(error)));
   } finally {
+    promptBusy = false;
     if (unsubscribe) unsubscribe();
   }
 }
@@ -118,4 +201,6 @@ export function resetSession(): void {
     session.dispose();
   }
   session = null;
+  sessionPromise = null;
+  promptBusy = false;
 }

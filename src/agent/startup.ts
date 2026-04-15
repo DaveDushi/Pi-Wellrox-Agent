@@ -54,16 +54,12 @@ export async function initiateOAuth(): Promise<{ url: string }> {
     onAuth(info) {
       pendingOAuthUrl = info.url;
     },
-    async onPrompt(prompt) {
-      // Web flow doesn't support interactive prompts; return empty
+    async onPrompt() {
       return "";
     },
-    onProgress(message) {
-      // Could forward to client via websocket in future
-    },
+    onProgress() {},
   });
 
-  // Wait briefly for the URL to be set by the callback
   const start = Date.now();
   while (!pendingOAuthUrl && Date.now() - start < 10000) {
     await new Promise((r) => setTimeout(r, 100));

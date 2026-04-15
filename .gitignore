@@ -3,3 +3,5 @@ dist/
 .pi/settings.json
 .pi/sessions/
 .pi/*.json
+data/
+release/

@@ -2,16 +2,51 @@
   "name": "pi-wellrox-agent",
   "version": "0.1.0",
   "type": "module",
+  "main": "dist/electron/main.js",
   "scripts": {
-    "dev": "bun run --watch src/main.ts",
-    "start": "bun run src/main.ts"
+    "copy:preload": "node -e \"require('fs').copyFileSync('src/electron/preload.cjs','dist/electron/preload.cjs')\"",
+    "build:ts": "tsc && npm run copy:preload",
+    "dev": "tsc && npm run copy:preload && electron .",
+    "start": "electron .",
+    "build": "tsc && npm run copy:preload && electron-builder",
+    "server": "node dist/main.js"
   },
   "dependencies": {
     "@mariozechner/pi-coding-agent": "latest",
+    "@hono/node-server": "^1",
     "hono": "^4"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/node": "^22",
+    "electron": "^33",
+    "electron-builder": "^25",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.wellrox.pi-agent",
+    "productName": "Pi Wellrox Agent",
+    "files": [
+      "dist/**/*",
+      "public/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "skills",
+        "to": "skills",
+        "filter": ["**/*"]
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

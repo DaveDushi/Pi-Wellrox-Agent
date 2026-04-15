@@ -1,5 +1,5 @@
-import { SettingsManager } from "@mariozechner/pi-coding-agent";
-import { join } from "path";
+import { join, dirname } from "path";
+import { readFile, writeFile, access, mkdir } from "fs/promises";
 
 const PI_DIR = join(process.cwd(), ".pi");
 const SETTINGS_PATH = join(PI_DIR, "settings.json");
@@ -16,27 +16,30 @@ const DEFAULT_SETTINGS: PiSettings = {
   defaultThinkingLevel: "high",
 };
 
-let settingsManager: SettingsManager | null = null;
-
-export function getSettingsManager(): SettingsManager {
-  if (!settingsManager) {
-    settingsManager = SettingsManager.create(process.cwd());
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
-  return settingsManager;
 }
 
 export async function readSettings(): Promise<PiSettings> {
   try {
-    const file = Bun.file(SETTINGS_PATH);
-    if (await file.exists()) {
-      return { ...DEFAULT_SETTINGS, ...(await file.json()) };
+    if (await fileExists(SETTINGS_PATH)) {
+      const raw = await readFile(SETTINGS_PATH, "utf-8");
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     }
-  } catch {}
+  } catch (e) {
+    console.warn("[settings] Failed to read settings:", e);
+  }
   return { ...DEFAULT_SETTINGS };
 }
 
 export async function writeSettings(settings: PiSettings): Promise<void> {
-  await Bun.write(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
+  await mkdir(dirname(SETTINGS_PATH), { recursive: true });
+  await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
 }
 
 export async function updateSettings(
@@ -49,8 +52,7 @@ export async function updateSettings(
 }
 
 export async function ensureSettingsFile(): Promise<void> {
-  const file = Bun.file(SETTINGS_PATH);
-  if (!(await file.exists())) {
+  if (!(await fileExists(SETTINGS_PATH))) {
     await writeSettings(DEFAULT_SETTINGS);
   }
 }

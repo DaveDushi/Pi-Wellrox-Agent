@@ -1,11 +1,14 @@
+import { serve } from "@hono/node-server";
 import { ensureSettingsFile } from "./agent/sharedModel.js";
 import { resetStartupState } from "./agent/startup.js";
+import { ensureDirectories } from "./fileManager.js";
+import { init as initMediaRegistry } from "./mediaRegistry.js";
 import { createApp } from "./app.js";
 
-const PORT = 3141;
-
-async function main() {
+export async function startServer(port: number): Promise<void> {
   await ensureSettingsFile();
+  await ensureDirectories();
+  await initMediaRegistry();
   resetStartupState();
 
   const app = createApp();
@@ -14,15 +17,9 @@ async function main() {
   ╔═══════════════════════════════════╗
   ║       Pi Wellrox Agent v0.1       ║
   ║                                   ║
-  ║  http://localhost:${PORT}            ║
+  ║  http://localhost:${port}            ║
   ╚═══════════════════════════════════╝
   `);
 
-  Bun.serve({
-    port: PORT,
-    fetch: app.fetch,
-    idleTimeout: 255,
-  });
+  serve({ fetch: app.fetch, port, hostname: "127.0.0.1" });
 }
-
-main();

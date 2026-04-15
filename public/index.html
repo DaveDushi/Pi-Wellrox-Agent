@@ -3,39 +3,117 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#09090b">
   <title>Pi Wellrox Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <!-- Startup Overlay -->
-  <div id="startup-overlay">
+  <div id="startup-overlay" role="dialog" aria-modal="true" aria-label="Setup">
     <div class="startup-card" id="startup-content">
       <h1>Pi Wellrox Agent</h1>
       <p>Connecting...</p>
-      <div class="spinner"></div>
+      <div class="spinner"><span></span></div>
     </div>
   </div>
 
-  <!-- Chat Interface -->
-  <div id="chat-container">
-    <div class="chat-header">
-      <h2>Pi</h2>
+  <!-- Video Editor -->
+  <div id="editor-container">
+    <div class="editor-header">
+      <h2>Pi Video Editor</h2>
       <span class="model-badge"></span>
     </div>
-    <div class="messages"></div>
-    <div class="input-area">
-      <div class="input-wrapper">
-        <textarea
-          id="message-input"
-          placeholder="Message Pi..."
-          rows="1"
-        ></textarea>
-        <button class="send-btn" id="send-btn" title="Send">
-          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-          </svg>
+
+    <!-- Left: Media Bin -->
+    <div class="panel media-bin-panel">
+      <div class="panel-label">
+        <span>Media</span>
+        <label class="btn btn-ghost media-upload-btn">
+          + Upload
+          <input type="file" id="file-input" accept="video/*" hidden multiple>
+        </label>
+      </div>
+      <div class="media-bin" id="media-bin">
+        <div class="media-drop-zone" id="media-drop-zone">
+          <div class="drop-zone-content">
+            <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+              <path d="M24 4l-8 8h5v12h6V12h5L24 4z"/>
+              <path d="M6 30v10c0 2.2 1.8 4 4 4h28c2.2 0 4-1.8 4-4V30h-6v10H12V30H6z"/>
+            </svg>
+            <span>Drop videos here or click Upload</span>
+          </div>
+        </div>
+        <div class="media-grid" id="media-grid"></div>
+      </div>
+    </div>
+
+    <div class="resize-handle" id="resize-left" title="Resize"></div>
+
+    <!-- Center: Workspace -->
+    <div class="workspace">
+      <div class="preview-area">
+        <div class="panel preview-panel">
+          <div class="panel-label">
+            <span>Preview</span>
+            <div class="preview-actions" id="preview-actions" style="display:none">
+              <button class="btn btn-ghost" id="edit-this-btn">Edit this</button>
+              <a class="btn btn-ghost" id="download-btn" download>Download</a>
+            </div>
+          </div>
+          <div class="preview-content" id="preview-content">
+            <div class="preview-placeholder" id="preview-placeholder">
+              <div class="placeholder-icon">
+                <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="6" y="10" width="36" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.5"/>
+                  <polygon points="20,18 32,24 20,30" fill="currentColor"/>
+                </svg>
+              </div>
+              <div class="placeholder-text">Select a clip to preview</div>
+            </div>
+            <div class="preview-video-wrap" id="preview-video-wrap" style="display:none">
+              <video id="preview-video" controls></video>
+              <div class="preview-meta" id="preview-meta"></div>
+              <div class="in-out-controls" id="in-out-controls">
+                <div class="in-out-bar-wrap">
+                  <div class="in-out-bar" id="in-out-bar">
+                    <div class="in-out-range" id="in-out-range"></div>
+                    <div class="in-out-handle in-handle" id="in-handle" tabindex="0" role="slider" aria-label="In point"></div>
+                    <div class="in-out-handle out-handle" id="out-handle" tabindex="0" role="slider" aria-label="Out point"></div>
+                  </div>
+                </div>
+                <div class="in-out-labels">
+                  <span id="in-label">I: 0:00</span>
+                  <span class="in-out-reset" id="in-out-reset" title="Reset range">Reset</span>
+                  <span id="out-label">O: 0:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="storyboard-strip" id="storyboard-strip" style="display:none"></div>
+    </div>
+
+    <div class="resize-handle" id="resize-right" title="Resize"></div>
+
+    <!-- Right: Chat Panel -->
+    <div class="panel chat-panel">
+      <div class="chat-header">
+        <span>Agent Chat</span>
+        <span class="chat-status" id="chat-status"></span>
+      </div>
+      <div class="chat-messages" id="chat-messages" role="log" aria-live="polite"></div>
+      <div class="chat-attachments" id="chat-attachments" style="display:none"></div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" placeholder="Describe your edit..." rows="1" disabled></textarea>
+        <button class="btn-send" id="send-btn" disabled aria-label="Send message">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.993.993 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"/></svg>
         </button>
       </div>
+      <div class="chat-hint"><kbd>Enter</kbd> to send</div>
     </div>
   </div>
 
