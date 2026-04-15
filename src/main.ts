@@ -4,6 +4,7 @@ import { resetStartupState } from "./agent/startup.js";
 import { ensureDirectories } from "./fileManager.js";
 import { init as initMediaRegistry } from "./mediaRegistry.js";
 import { createApp } from "./app.js";
+import { cleanupAllTempDirs } from "./tempManager.js";
 
 export async function startServer(port: number): Promise<void> {
   await ensureSettingsFile();
@@ -12,6 +13,13 @@ export async function startServer(port: number): Promise<void> {
   resetStartupState();
 
   const app = createApp();
+
+  const shutdown = async () => {
+    await cleanupAllTempDirs();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 
   console.log(`
   ╔═══════════════════════════════════╗

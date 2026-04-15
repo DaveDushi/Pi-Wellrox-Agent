@@ -5,3 +5,6 @@ dist/
 .pi/*.json
 data/
 release/
+build/ffmpeg/
+temp_frames/
+temp_video/

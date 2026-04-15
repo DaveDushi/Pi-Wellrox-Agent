@@ -4,16 +4,18 @@
   "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {
-    "copy:preload": "node -e \"require('fs').copyFileSync('src/electron/preload.cjs','dist/electron/preload.cjs')\"",
-    "build:ts": "tsc && npm run copy:preload",
-    "dev": "tsc && npm run copy:preload && electron .",
+    "build:ts": "tsc",
+    "dev": "tsc && electron .",
     "start": "electron .",
-    "build": "tsc && npm run copy:preload && electron-builder",
+    "prepare-ffmpeg": "node scripts/prepare-ffmpeg.cjs",
+    "build": "tsc && npm run prepare-ffmpeg && electron-builder",
     "server": "node dist/main.js"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "latest",
     "@hono/node-server": "^1",
+    "@mariozechner/pi-coding-agent": "latest",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
     "hono": "^4"
   },
   "devDependencies": {
@@ -33,7 +35,16 @@
       {
         "from": "skills",
         "to": "skills",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { access, unlink } from "fs/promises";
+import { injectFfmpegIntoPath, verifyFfmpeg } from "./ffmpeg.js";
 import { startServer } from "../main.js";
 import {
   handleChat,
@@ -21,6 +22,7 @@ import {
   generateJobId,
   getUploadPath,
 } from "../fileManager.js";
+import { cleanupAllTempDirs } from "../tempManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -163,7 +165,6 @@ async function createWindow(): Promise<void> {
     width: 1400,
     height: 900,
     webPreferences: {
-      preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -178,6 +179,10 @@ async function createWindow(): Promise<void> {
 // --- App lifecycle ---
 
 app.whenReady().then(async () => {
+  injectFfmpegIntoPath();
+  const ffCheck = verifyFfmpeg();
+  if (!ffCheck.ok) console.error("[startup] FFmpeg check failed:", ffCheck.error);
+
   registerIpcHandlers();
   await startServer(PORT);
   await createWindow();
@@ -187,6 +192,12 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+});
+
+app.on("before-quit", async (e) => {
+  e.preventDefault();
+  await cleanupAllTempDirs();
+  app.exit(0);
 });
 
 app.on("window-all-closed", () => {

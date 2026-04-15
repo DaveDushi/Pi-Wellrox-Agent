@@ -41,7 +41,7 @@ ${mediaSection}
 When the user asks you to edit or process video:
 - The user may reference videos by name — match them against the media files listed above.
 - Explain your approach before starting (e.g. what FFmpeg operations you'll use and why).
-- Use FFmpeg to process the video(s). If FFmpeg is not available, tell the user.
+- Use FFmpeg to process the video(s). FFmpeg is bundled and available on PATH.
 - The output MUST be MP4 format (H.264 video + AAC audio) for browser playback.
 - Save output files to the output directory listed above.
 - After processing, describe what you did and how the result turned out.

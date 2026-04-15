@@ -1,8 +1,6 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-const isElectron = !!window.api;
-
 const state = {
   phase: "loading",
   models: [],
@@ -23,53 +21,45 @@ const state = {
 // API Abstraction (Electron IPC vs HTTP)
 // =====================
 
-const piApi = isElectron
-  ? {
-      startup: window.api.startup,
-      media: window.api.media,
-      agent: window.api.agent,
-      on: window.api.on.bind(window.api),
-      removeAllListeners: window.api.removeAllListeners.bind(window.api),
-    }
-  : {
-      startup: {
-        getStatus: () => fetch("/api/status").then((r) => r.json()),
-        initiateAuth: () => fetch("/api/auth", { method: "POST" }).then((r) => r.json()),
-        getAuthStatus: () => fetch("/api/auth/status").then((r) => r.json()),
-        getModels: () => fetch("/api/models").then((r) => r.json()),
-        selectModel: (id) =>
-          fetch("/api/select-model", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ modelId: id }),
-          }).then((r) => r.json()),
-      },
-      media: {
-        list: () => fetch("/api/media").then((r) => r.json()),
-        update: (id, data) =>
-          fetch(`/api/media/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
-          }).then((r) => r.json()),
-        remove: (id) => fetch(`/api/media/${id}`, { method: "DELETE" }).then((r) => r.json()),
-      },
-      agent: {
-        processVideo: null,
-        reset: () => fetch("/api/agent/reset", { method: "POST" }).then((r) => r.json()),
-      },
-      _sseListeners: {},
-      on(channel, cb) {
-        if (!this._sseListeners[channel]) this._sseListeners[channel] = [];
-        this._sseListeners[channel].push(cb);
-      },
-      removeAllListeners(channel) {
-        this._sseListeners[channel] = [];
-      },
-      _emit(channel, data) {
-        (this._sseListeners[channel] || []).forEach((cb) => cb(data));
-      },
-    };
+const piApi = {
+  startup: {
+    getStatus: () => fetch("/api/status").then((r) => r.json()),
+    initiateAuth: () => fetch("/api/auth", { method: "POST" }).then((r) => r.json()),
+    getAuthStatus: () => fetch("/api/auth/status").then((r) => r.json()),
+    getModels: () => fetch("/api/models").then((r) => r.json()),
+    selectModel: (id) =>
+      fetch("/api/select-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: id }),
+      }).then((r) => r.json()),
+  },
+  media: {
+    list: () => fetch("/api/media").then((r) => r.json()),
+    update: (id, data) =>
+      fetch(`/api/media/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).then((r) => r.json()),
+    remove: (id) => fetch(`/api/media/${id}`, { method: "DELETE" }).then((r) => r.json()),
+  },
+  agent: {
+    processVideo: null,
+    reset: () => fetch("/api/agent/reset", { method: "POST" }).then((r) => r.json()),
+  },
+  _sseListeners: {},
+  on(channel, cb) {
+    if (!this._sseListeners[channel]) this._sseListeners[channel] = [];
+    this._sseListeners[channel].push(cb);
+  },
+  removeAllListeners(channel) {
+    this._sseListeners[channel] = [];
+  },
+  _emit(channel, data) {
+    (this._sseListeners[channel] || []).forEach((cb) => cb(data));
+  },
+};
 
 // =====================
 // Startup Flow
@@ -314,7 +304,7 @@ function setupMediaBin() {
 }
 
 async function fetchMediaLibrary() {
-  const grid = $("#media-grid");
+  const grid = $("#media-grid-uploads");
   if (grid && state.mediaItems.length === 0) {
     grid.innerHTML = '<div class="skeleton-card"></div><div class="skeleton-card"></div>';
   }
@@ -334,13 +324,15 @@ async function fetchMediaLibrary() {
 }
 
 function renderMediaBin() {
-  const grid = $("#media-grid");
+  const uploadsGrid = $("#media-grid-uploads");
+  const outputsGrid = $("#media-grid-outputs");
   const dropZone = $("#media-drop-zone");
 
-  grid.querySelectorAll(".skeleton-card").forEach((el) => el.remove());
+  uploadsGrid.querySelectorAll(".skeleton-card").forEach((el) => el.remove());
 
   if (state.mediaItems.length === 0) {
-    grid.innerHTML = "";
+    uploadsGrid.innerHTML = "";
+    outputsGrid.innerHTML = "";
     dropZone.style.display = "flex";
     updateChatInputState();
     return;
@@ -348,10 +340,13 @@ function renderMediaBin() {
 
   dropZone.style.display = "none";
 
+  const allGrids = [uploadsGrid, outputsGrid];
   const existingCards = new Map();
-  grid.querySelectorAll(".media-card").forEach((card) => {
-    existingCards.set(card.dataset.id, card);
-  });
+  allGrids.forEach((g) =>
+    g.querySelectorAll(".media-card").forEach((card) => {
+      existingCards.set(card.dataset.id, card);
+    })
+  );
 
   const currentIds = new Set(state.mediaItems.map((item) => item.id));
 
@@ -360,6 +355,7 @@ function renderMediaBin() {
   });
 
   state.mediaItems.forEach((item) => {
+    const targetGrid = item.type === "upload" ? uploadsGrid : outputsGrid;
     const attIdx = state.attachedIds.indexOf(item.id);
     const isAttached = attIdx !== -1;
     const letter = isAttached ? String.fromCharCode(65 + attIdx) : "";
@@ -369,7 +365,9 @@ function renderMediaBin() {
 
     if (!card) {
       card = createMediaCard(item);
-      grid.appendChild(card);
+      targetGrid.appendChild(card);
+    } else if (card.parentElement !== targetGrid) {
+      targetGrid.appendChild(card);
     }
 
     card.classList.toggle("selected", isAttached);
@@ -398,7 +396,6 @@ function renderMediaBin() {
 
   updateChatInputState();
   renderAttachmentBar();
-  renderStoryboardStrip();
 }
 
 function createMediaCard(item) {
@@ -738,94 +735,6 @@ function updateSendButton() {
     }
   });
 })();
-
-// =====================
-// Storyboard Strip
-// =====================
-
-function renderStoryboardStrip() {
-  const strip = $("#storyboard-strip");
-  if (state.attachedIds.length < 2) {
-    strip.style.display = "none";
-    return;
-  }
-
-  strip.style.display = "flex";
-  strip.innerHTML = state.attachedIds
-    .map((id, i) => {
-      const item = state.mediaItems.find((m) => m.id === id);
-      if (!item) return "";
-      const letter = String.fromCharCode(65 + i);
-      return `
-        <div class="storyboard-item" data-id="${escapeAttr(id)}" draggable="true">
-          <canvas class="storyboard-thumb" width="40" height="23" data-id="${escapeAttr(id)}"></canvas>
-          <div class="storyboard-letter">${letter}</div>
-          <div class="storyboard-label">${escapeHtml(item.label.slice(0, 18))}</div>
-          <button class="storyboard-remove" data-id="${escapeAttr(id)}" title="Remove">&times;</button>
-        </div>
-      `;
-    })
-    .join('<div class="storyboard-arrow">&#8594;</div>');
-
-  strip.querySelectorAll(".storyboard-thumb").forEach((canvas) => {
-    const id = canvas.dataset.id;
-    if (state.thumbnailCache[id]) {
-      const img = new Image();
-      img.onload = () => canvas.getContext("2d").drawImage(img, 0, 0, 40, 23);
-      img.src = state.thumbnailCache[id];
-    }
-  });
-
-  strip.querySelectorAll(".storyboard-remove").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      detachClip(btn.dataset.id);
-    });
-  });
-
-  setupStoryboardDrag(strip);
-}
-
-function setupStoryboardDrag(strip) {
-  let dragId = null;
-
-  strip.querySelectorAll(".storyboard-item").forEach((item) => {
-    item.addEventListener("dragstart", (e) => {
-      dragId = item.dataset.id;
-      item.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-    });
-
-    item.addEventListener("dragend", () => {
-      item.classList.remove("dragging");
-      dragId = null;
-    });
-
-    item.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (!dragId || dragId === item.dataset.id) return;
-      item.classList.add("drag-over");
-    });
-
-    item.addEventListener("dragleave", () => {
-      item.classList.remove("drag-over");
-    });
-
-    item.addEventListener("drop", (e) => {
-      e.preventDefault();
-      item.classList.remove("drag-over");
-      if (!dragId || dragId === item.dataset.id) return;
-
-      const fromIdx = state.attachedIds.indexOf(dragId);
-      const toIdx = state.attachedIds.indexOf(item.dataset.id);
-      if (fromIdx === -1 || toIdx === -1) return;
-
-      state.attachedIds.splice(fromIdx, 1);
-      state.attachedIds.splice(toIdx, 0, dragId);
-      renderMediaBin();
-    });
-  });
-}
 
 // =====================
 // Preview Panel
@@ -1318,45 +1227,41 @@ function sendChatMessage() {
   renderAttachmentBar();
   renderMediaBin();
 
-  if (isElectron) {
-    piApi.agent.chat({ description: messageText });
-  } else {
-    fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description: messageText }),
-    })
-      .then(async (response) => {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+  fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ description: messageText }),
+  })
+    .then(async (response) => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-          let currentEvent = null;
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ") && currentEvent) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                piApi._emit("agent:" + currentEvent, data);
-              } catch {}
-              currentEvent = null;
-            }
+        let currentEvent = null;
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ") && currentEvent) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              piApi._emit("agent:" + currentEvent, data);
+            } catch {}
+            currentEvent = null;
           }
         }
-      })
-      .catch((err) => {
-        handleError({ message: err.message });
-      });
-  }
+      }
+    })
+    .catch((err) => {
+      handleError({ message: err.message });
+    });
 }
 
 function stopStreaming() {
