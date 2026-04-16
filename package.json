@@ -1,6 +1,6 @@
 {
   "name": "pi-wellrox-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -51,7 +51,19 @@
       "output": "release"
     },
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Pi-Wellrox-Agent-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false
     },
     "mac": {
       "target": "dmg"

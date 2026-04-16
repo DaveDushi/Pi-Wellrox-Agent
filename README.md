@@ -17,6 +17,16 @@ Open [http://localhost:3141](http://localhost:3141) in your browser.
 2. Select a model for this session (required every launch)
 3. Chat with Pi in the browser
 
+## Installing on Windows (packaged app)
+
+Distribute `release/Pi-Wellrox-Agent-Setup-<version>.exe` — the NSIS installer. Do **not** ship the loose `win-unpacked/` folder or a ZIP of it; Windows Mark-of-the-Web and antivirus frequently quarantine `ffmpeg.dll` from ZIP extractions, producing a `ffmpeg.dll was not found` system error on launch.
+
+On first launch:
+
+- If SmartScreen blocks the installer: **More info → Run anyway** (the app is not code-signed yet).
+- If `ffmpeg.dll was not found` still appears after install: antivirus quarantined it. Restore it from quarantine or exclude `%LOCALAPPDATA%\Programs\pi-wellrox-agent\` in your AV, then relaunch.
+- The app uses a single-instance lock and picks a free local port automatically — a second launch focuses the existing window instead of crashing on `EADDRINUSE`.
+
 ## Terminal Pi
 
 The terminal Pi CLI shares the same `.pi/settings.json` configuration. After selecting a model in the web app, run `pi` in this directory and it will use the same provider and model settings.

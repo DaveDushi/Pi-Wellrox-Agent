@@ -1,8 +1,12 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { access, unlink } from "fs/promises";
-import { injectFfmpegIntoPath, verifyFfmpeg } from "./ffmpeg.js";
+import {
+  ensureFfmpegInstalled,
+  injectFfmpegIntoPath,
+  verifyFfmpeg,
+} from "./ffmpeg.js";
 import { startServer } from "../main.js";
 import {
   handleChat,
@@ -27,8 +31,8 @@ import { cleanupAllTempDirs } from "../tempManager.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PORT = 3141;
 let mainWindow: BrowserWindow | null = null;
+let serverPort = 0;
 
 // --- IPC Handlers ---
 
@@ -160,7 +164,7 @@ function registerIpcHandlers() {
 
 // --- Window ---
 
-async function createWindow(): Promise<void> {
+async function createWindow(port: number): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -170,7 +174,7 @@ async function createWindow(): Promise<void> {
     },
   });
 
-  mainWindow.loadURL(`http://localhost:${PORT}`);
+  mainWindow.loadURL(`http://127.0.0.1:${port}`);
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -178,21 +182,48 @@ async function createWindow(): Promise<void> {
 
 // --- App lifecycle ---
 
-app.whenReady().then(async () => {
-  injectFfmpegIntoPath();
-  const ffCheck = verifyFfmpeg();
-  if (!ffCheck.ok) console.error("[startup] FFmpeg check failed:", ffCheck.error);
-
-  registerIpcHandlers();
-  await startServer(PORT);
-  await createWindow();
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
     }
   });
-});
+
+  app.whenReady().then(async () => {
+    await ensureFfmpegInstalled();
+    injectFfmpegIntoPath();
+    const ffCheck = verifyFfmpeg();
+    if (!ffCheck.ok)
+      console.error("[startup] FFmpeg check failed:", ffCheck.error);
+
+    registerIpcHandlers();
+
+    try {
+      const started = await startServer(0);
+      serverPort = started.port;
+      await createWindow(serverPort);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : String(err);
+      dialog.showErrorBox(
+        "Pi Wellrox Agent failed to start",
+        `The local server could not start.\n\n${message}`
+      );
+      app.exit(1);
+      return;
+    }
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0 && serverPort) {
+        createWindow(serverPort);
+      }
+    });
+  });
+}
 
 app.on("before-quit", async (e) => {
   e.preventDefault();
