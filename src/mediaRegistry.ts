@@ -1,6 +1,7 @@
 import { join } from "path";
 import { readdir, readFile, writeFile } from "fs/promises";
 import { UPLOAD_DIR, OUTPUT_DIR } from "./fileManager.js";
+import { getDataDir } from "./paths.js";
 
 export interface MediaItem {
   id: string;
@@ -17,15 +18,16 @@ export interface MediaItem {
   outPoint?: number;
 }
 
-const DATA_DIR = join(process.cwd(), "data");
-const SIDECAR_PATH = join(DATA_DIR, "media-meta.json");
+function sidecarPath(): string {
+  return join(getDataDir(), "media-meta.json");
+}
 
 const items = new Map<string, MediaItem>();
 let writeChain: Promise<void> = Promise.resolve();
 
 async function loadSidecar(): Promise<Record<string, MediaItem>> {
   try {
-    const raw = await readFile(SIDECAR_PATH, "utf-8");
+    const raw = await readFile(sidecarPath(), "utf-8");
     return JSON.parse(raw);
   } catch (e) {
     console.warn("[mediaRegistry] Failed to load sidecar:", e);
@@ -39,7 +41,7 @@ function saveSidecar(): Promise<void> {
     for (const [id, item] of items) {
       obj[id] = item;
     }
-    await writeFile(SIDECAR_PATH, JSON.stringify(obj, null, 2));
+    await writeFile(sidecarPath(), JSON.stringify(obj, null, 2));
   }).catch((e) => {
     console.warn("[mediaRegistry] Failed to save sidecar:", e);
   });

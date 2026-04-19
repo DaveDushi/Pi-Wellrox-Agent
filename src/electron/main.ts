@@ -8,6 +8,7 @@ import {
   verifyFfmpeg,
 } from "./ffmpeg.js";
 import { startServer } from "../main.js";
+import { configurePaths } from "../paths.js";
 import {
   handleChat,
   resetSession,
@@ -194,6 +195,12 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    configurePaths({
+      userData: app.getPath("userData"),
+      appRoot: app.getAppPath(),
+      resources: app.isPackaged ? process.resourcesPath : app.getAppPath(),
+    });
+
     await ensureFfmpegInstalled();
     injectFfmpegIntoPath();
     const ffCheck = verifyFfmpeg();

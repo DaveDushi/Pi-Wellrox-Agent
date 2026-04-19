@@ -11,12 +11,11 @@ import { join } from "path";
 import { readSettings } from "./sharedModel.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { getAuthStorage, getModelRegistry } from "./startup.js";
+import { getPiDir, getSkillsDir, getUserDataDir } from "../paths.js";
 
 let session: AgentSession | null = null;
 let sessionPromise: Promise<void> | null = null;
 let promptBusy = false;
-
-const SESSIONS_DIR = join(process.cwd(), ".pi", "sessions");
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -28,7 +27,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 async function discoverSkills(): Promise<Skill[]> {
-  const skillsDir = join(process.cwd(), "skills");
+  const skillsDir = getSkillsDir();
   const skills: Skill[] = [];
   try {
     const entries = await readdir(skillsDir, { withFileTypes: true });
@@ -73,10 +72,11 @@ async function doInitAgent(): Promise<void> {
   });
   await loader.reload();
 
-  await mkdir(SESSIONS_DIR, { recursive: true });
+  const sessionsDir = join(getPiDir(), "sessions");
+  await mkdir(sessionsDir, { recursive: true });
 
   const result = await createAgentSession({
-    sessionManager: SessionManager.create(process.cwd(), SESSIONS_DIR),
+    sessionManager: SessionManager.create(getUserDataDir(), sessionsDir),
     resourceLoader: loader,
     authStorage,
     modelRegistry,

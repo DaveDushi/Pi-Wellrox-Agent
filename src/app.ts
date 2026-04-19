@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { createWriteStream } from "fs";
+import { createReadStream, createWriteStream, statSync } from "fs";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import { unlink, access } from "fs/promises";
 import { join } from "path";
+import { getDataDir, getPublicDir } from "./paths.js";
 import * as registry from "./mediaRegistry.js";
 import {
   MAX_FILE_SIZE,
@@ -237,24 +238,31 @@ export function createApp(): Hono {
     return c.json({ ok: true });
   });
 
-  // Serve media files (uploads + output) — reject path traversal
-  app.use(
-    "/media/*",
-    async (c, next) => {
-      const path = c.req.path;
-      if (path.includes("..")) {
-        return c.json({ error: "Invalid path" }, 400);
-      }
-      await next();
-    },
-    serveStatic({
-      root: "./data",
-      rewriteRequestPath: (path: string) => path.replace(/^\/media/, ""),
-    })
-  );
+  // Serve media files (uploads + output) — reject path traversal.
+  // Use a custom handler so the data dir is read lazily each request
+  // (it lives under userData in the packaged app, not cwd).
+  app.get("/media/*", async (c) => {
+    const reqPath = c.req.path;
+    if (reqPath.includes("..")) {
+      return c.json({ error: "Invalid path" }, 400);
+    }
+    const rel = reqPath.replace(/^\/media\//, "");
+    const abs = join(getDataDir(), rel);
+    try {
+      const stats = statSync(abs);
+      if (!stats.isFile()) return c.json({ error: "Not found" }, 404);
+      const stream = createReadStream(abs);
+      return c.body(Readable.toWeb(stream) as any, 200, {
+        "Content-Length": stats.size.toString(),
+      });
+    } catch {
+      return c.json({ error: "Not found" }, 404);
+    }
+  });
 
-  // Static files (SPA) — after API routes
-  app.use("/*", serveStatic({ root: "./public" }));
+  // Static files (SPA) — after API routes. Root resolved at request time
+  // via a closure so packaged app reads from asar instead of cwd.
+  app.use("/*", serveStatic({ root: getPublicDir() }));
 
   return app;
 }

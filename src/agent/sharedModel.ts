@@ -1,8 +1,10 @@
 import { join, dirname } from "path";
 import { readFile, writeFile, access, mkdir } from "fs/promises";
+import { getPiDir } from "../paths.js";
 
-const PI_DIR = join(process.cwd(), ".pi");
-const SETTINGS_PATH = join(PI_DIR, "settings.json");
+function settingsPath(): string {
+  return join(getPiDir(), "settings.json");
+}
 
 export interface PiSettings {
   defaultProvider?: string;
@@ -27,8 +29,8 @@ async function fileExists(path: string): Promise<boolean> {
 
 export async function readSettings(): Promise<PiSettings> {
   try {
-    if (await fileExists(SETTINGS_PATH)) {
-      const raw = await readFile(SETTINGS_PATH, "utf-8");
+    if (await fileExists(settingsPath())) {
+      const raw = await readFile(settingsPath(), "utf-8");
       return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     }
   } catch (e) {
@@ -38,8 +40,8 @@ export async function readSettings(): Promise<PiSettings> {
 }
 
 export async function writeSettings(settings: PiSettings): Promise<void> {
-  await mkdir(dirname(SETTINGS_PATH), { recursive: true });
-  await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
+  await mkdir(dirname(settingsPath()), { recursive: true });
+  await writeFile(settingsPath(), JSON.stringify(settings, null, 2) + "\n");
 }
 
 export async function updateSettings(
@@ -52,7 +54,7 @@ export async function updateSettings(
 }
 
 export async function ensureSettingsFile(): Promise<void> {
-  if (!(await fileExists(SETTINGS_PATH))) {
+  if (!(await fileExists(settingsPath()))) {
     await writeSettings(DEFAULT_SETTINGS);
   }
 }
