@@ -1532,4 +1532,105 @@ function formatTime(seconds) {
 
 document.addEventListener("DOMContentLoaded", () => {
   checkStatus();
+  initUpdateUI();
 });
+
+// =====================
+// Auto-update UI
+// =====================
+
+function initUpdateUI() {
+  const banner = document.getElementById("update-banner");
+  const text = document.getElementById("update-banner-text");
+  const installBtn = document.getElementById("update-install-btn");
+  const closeBtn = document.getElementById("update-banner-close");
+  const checkBtn = document.getElementById("check-updates-btn");
+  if (!banner) return;
+
+  let dismissedForVersion = null;
+  let manualCheck = false;
+
+  function render(s) {
+    if (!s) return;
+    switch (s.status) {
+      case "available":
+        if (dismissedForVersion === s.version) return;
+        text.textContent = `Update available: v${s.version}. Downloading…`;
+        installBtn.hidden = true;
+        banner.hidden = false;
+        break;
+      case "downloading":
+        if (dismissedForVersion === s.version) return;
+        text.textContent = `Downloading update${s.version ? " v" + s.version : ""}: ${s.percent || 0}%`;
+        installBtn.hidden = true;
+        banner.hidden = false;
+        break;
+      case "ready":
+        text.textContent = `Update v${s.version} ready.`;
+        installBtn.hidden = false;
+        banner.hidden = false;
+        break;
+      case "none":
+        if (manualCheck) {
+          text.textContent = `You're on the latest version (v${s.version || ""}).`;
+          installBtn.hidden = true;
+          banner.hidden = false;
+          setTimeout(() => {
+            if (banner && text.textContent.startsWith("You're on the latest")) banner.hidden = true;
+          }, 4000);
+          manualCheck = false;
+        }
+        break;
+      case "error":
+        if (manualCheck) {
+          text.textContent = `Update check failed: ${s.message}`;
+          installBtn.hidden = true;
+          banner.hidden = false;
+          manualCheck = false;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch("/api/update/status");
+      const data = await res.json();
+      render(data);
+    } catch {}
+  }
+
+  closeBtn?.addEventListener("click", () => {
+    const current = text.textContent.match(/v([\d.]+)/);
+    dismissedForVersion = current ? current[1] : "dismissed";
+    banner.hidden = true;
+  });
+
+  installBtn?.addEventListener("click", async () => {
+    installBtn.disabled = true;
+    installBtn.textContent = "Restarting…";
+    try {
+      await fetch("/api/update/install", { method: "POST" });
+    } catch {}
+  });
+
+  checkBtn?.addEventListener("click", async () => {
+    checkBtn.disabled = true;
+    const original = checkBtn.textContent;
+    checkBtn.textContent = "Checking…";
+    manualCheck = true;
+    try {
+      const res = await fetch("/api/update/check", { method: "POST" });
+      const data = await res.json();
+      render(data);
+    } catch {}
+    checkBtn.disabled = false;
+    checkBtn.textContent = original;
+  });
+
+  // Initial poll + interval
+  poll();
+  setInterval(poll, 15000);
+}

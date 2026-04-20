@@ -11,6 +11,13 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <!-- Update Banner -->
+  <div id="update-banner" class="update-banner" hidden>
+    <span id="update-banner-text"></span>
+    <button class="btn btn-primary btn-sm" id="update-install-btn" hidden>Restart & Install</button>
+    <button class="update-banner-close" id="update-banner-close" aria-label="Dismiss">&times;</button>
+  </div>
+
   <!-- Startup Overlay -->
   <div id="startup-overlay" role="dialog" aria-modal="true" aria-label="Setup">
     <div class="startup-card" id="startup-content">
@@ -25,6 +32,7 @@
     <div class="editor-header">
       <h2>Pi Video Editor</h2>
       <span class="model-badge"></span>
+      <button class="btn btn-ghost btn-sm" id="check-updates-btn" title="Check for updates">Check for updates</button>
     </div>
 
     <!-- Left: Media Bin -->

@@ -21,6 +21,7 @@ import {
   selectModel,
 } from "./agent/startup.js";
 import { handleChat, resetSession, type AgentEvent } from "./agent/createAgent.js";
+import { getUpdateState, checkForUpdates, quitAndInstall } from "./electron/updater.js";
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -67,6 +68,21 @@ export function createApp(): Hono {
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : "Failed to select model" }, 500);
     }
+  });
+
+  // --- Update API ---
+
+  app.get("/api/update/status", (c) => {
+    return c.json(getUpdateState());
+  });
+
+  app.post("/api/update/check", async (c) => {
+    return c.json(await checkForUpdates());
+  });
+
+  app.post("/api/update/install", (c) => {
+    quitAndInstall();
+    return c.json({ ok: true });
   });
 
   // --- Media API ---

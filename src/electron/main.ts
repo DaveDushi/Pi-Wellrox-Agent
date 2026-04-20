@@ -28,6 +28,7 @@ import {
   getUploadPath,
 } from "../fileManager.js";
 import { cleanupAllTempDirs } from "../tempManager.js";
+import { initUpdater } from "./updater.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -218,6 +219,7 @@ if (!gotLock) {
       const started = await startServer(0);
       serverPort = started.port;
       await createWindow(serverPort);
+      initUpdater();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : String(err);
