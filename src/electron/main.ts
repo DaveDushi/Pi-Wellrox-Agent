@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { access, unlink } from "fs/promises";
@@ -173,6 +173,11 @@ async function createWindow(port: number): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
   });
 
   mainWindow.loadURL(`http://127.0.0.1:${port}`);
