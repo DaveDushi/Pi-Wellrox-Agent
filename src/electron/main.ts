@@ -7,6 +7,10 @@ import {
   injectFfmpegIntoPath,
   verifyFfmpeg,
 } from "./ffmpeg.js";
+import {
+  ensurePortableShellInstalled,
+  writeShellPathSetting,
+} from "./portableShell.js";
 import { startServer } from "../main.js";
 import { configurePaths } from "../paths.js";
 import {
@@ -212,6 +216,11 @@ if (!gotLock) {
     const ffCheck = verifyFfmpeg();
     if (!ffCheck.ok)
       console.error("[startup] FFmpeg check failed:", ffCheck.error);
+
+    const bashPath = await ensurePortableShellInstalled();
+    if (bashPath) {
+      await writeShellPathSetting(bashPath);
+    }
 
     registerIpcHandlers();
 

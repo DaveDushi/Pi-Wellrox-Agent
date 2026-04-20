@@ -1,6 +1,6 @@
 {
   "name": "pi-wellrox-agent",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "main": "dist/electron/main.js",
   "scripts": {
@@ -8,7 +8,8 @@
     "dev": "tsc && electron .",
     "start": "electron .",
     "prepare-ffmpeg": "node scripts/prepare-ffmpeg.cjs",
-    "build": "tsc && npm run prepare-ffmpeg && electron-builder",
+    "prepare-git": "node scripts/prepare-git.cjs",
+    "build": "tsc && npm run prepare-ffmpeg && npm run prepare-git && electron-builder",
     "server": "node dist/main.js"
   },
   "dependencies": {
@@ -43,6 +44,13 @@
       {
         "from": "build/ffmpeg",
         "to": "ffmpeg",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/git",
+        "to": "git",
         "filter": [
           "**/*"
         ]
