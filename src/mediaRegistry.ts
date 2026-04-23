@@ -48,6 +48,17 @@ function saveSidecar(): Promise<void> {
   return writeChain;
 }
 
+const MEDIA_EXTENSIONS = new Set([
+  "mp4", "mov", "mkv", "webm", "avi", "m4v", "mpg", "mpeg",
+  "jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "heic", "avif",
+]);
+
+function isMediaFile(filename: string): boolean {
+  const dot = filename.lastIndexOf(".");
+  if (dot < 0) return false;
+  return MEDIA_EXTENSIONS.has(filename.slice(dot + 1).toLowerCase());
+}
+
 async function fileCreatedAt(path: string): Promise<number> {
   try {
     const s = await stat(path);
@@ -85,6 +96,7 @@ export async function scanDisk(): Promise<void> {
   try {
     const outputFiles = await readdir(OUTPUT_DIR);
     for (const f of outputFiles) {
+      if (!isMediaFile(f)) continue;
       const id = `out-${f}`;
       seen.add(id);
       if (!items.has(id)) {
