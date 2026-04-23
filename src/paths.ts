@@ -2,12 +2,14 @@ import { join } from "path";
 
 interface PathConfig {
   userData: string;
+  localData: string;
   appRoot: string;
   resources: string;
 }
 
 const defaults: PathConfig = {
   userData: process.cwd(),
+  localData: process.cwd(),
   appRoot: process.cwd(),
   resources: process.cwd(),
 };
@@ -20,6 +22,10 @@ export function configurePaths(overrides: Partial<PathConfig>): void {
 
 export function getUserDataDir(): string {
   return current.userData;
+}
+
+export function getLocalDataDir(): string {
+  return current.localData;
 }
 
 export function getAppRoot(): string {
@@ -36,6 +42,10 @@ export function getPublicDir(): string {
 
 export function getDataDir(): string {
   return join(current.userData, "data");
+}
+
+export function getLibraryDir(): string {
+  return join(current.localData, "library");
 }
 
 export function getPiDir(): string {

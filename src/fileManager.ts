@@ -1,14 +1,14 @@
 import { join } from "path";
 import { mkdir } from "fs/promises";
-import { getDataDir } from "./paths.js";
+import { getLibraryDir } from "./paths.js";
 
-export let UPLOAD_DIR = join(getDataDir(), "uploads");
-export let OUTPUT_DIR = join(getDataDir(), "output");
+export let UPLOAD_DIR = join(getLibraryDir(), "uploads");
+export let OUTPUT_DIR = join(getLibraryDir(), "outputs");
 export const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
 export async function ensureDirectories(): Promise<void> {
-  UPLOAD_DIR = join(getDataDir(), "uploads");
-  OUTPUT_DIR = join(getDataDir(), "output");
+  UPLOAD_DIR = join(getLibraryDir(), "uploads");
+  OUTPUT_DIR = join(getLibraryDir(), "outputs");
   await mkdir(UPLOAD_DIR, { recursive: true });
   await mkdir(OUTPUT_DIR, { recursive: true });
 }

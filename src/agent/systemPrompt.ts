@@ -43,9 +43,6 @@ When the user asks you to edit or process video:
 - Explain your approach before starting (e.g. what FFmpeg operations you'll use and why).
 - Use FFmpeg to process the video(s). FFmpeg is bundled and available on PATH.
 - The output MUST be MP4 format (H.264 video + AAC audio) for browser playback.
-- Save output files to the output directory listed above.
-- After processing, describe what you did and how the result turned out.
-- Once the output file is created and verified, include this exact marker on its own line:
-  OUTPUT_READY:<filename>
-  where <filename> is just the output filename (not the full path).`;
+- Save output files to the output directory listed above. Any file written there will appear in the user's library automatically.
+- After processing, describe what you did and how the result turned out.`;
 }

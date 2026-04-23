@@ -1029,6 +1029,9 @@ function sendChatMessage() {
   let outputId = null;
   let userScrolledUp = false;
   const msgContainer = $("#chat-messages");
+  const preChatOutputIds = new Set(
+    state.mediaItems.filter((m) => m.type === "output").map((m) => m.id)
+  );
 
   msgContainer.addEventListener("scroll", () => {
     const atBottom = msgContainer.scrollHeight - msgContainer.scrollTop - msgContainer.clientHeight < 30;
@@ -1095,8 +1098,7 @@ function sendChatMessage() {
   function handleDelta(data) {
     currentThinkingText = "";
     agentMsg.text += data.text;
-    // Strip OUTPUT_READY markers from visible text
-    agentMsg.displayText = agentMsg.text.replace(/OUTPUT_READY:\S+/g, "").trim();
+    agentMsg.displayText = agentMsg.text;
     updateAgentMessage();
   }
 
@@ -1127,7 +1129,12 @@ function sendChatMessage() {
         const tool = [...agentMsg.activity].reverse().find(
           (a) => a.type === "tool" && a.name === data.tool
         );
-        if (tool) tool.status = data.success ? "done" : "failed";
+        if (tool) {
+          tool.status = data.success ? "done" : "failed";
+          if (!data.success && data.errorDetail) {
+            tool.errorDetail = data.errorDetail;
+          }
+        }
         updateAgentMessage();
         break;
       }
@@ -1151,21 +1158,24 @@ function sendChatMessage() {
     }
   }
 
-  async function handleOutputReady(data) {
-    outputId = data.id;
-    state.latestOutputId = data.id;
-    agentMsg.outputId = data.id;
-    agentMsg.displayText = (agentMsg.displayText || agentMsg.text || "")
-      .replace(/OUTPUT_READY:\S+/g, "").trim();
-    await fetchMediaLibrary();
-    previewClip(data.id);
-    updateAgentMessage();
-  }
+  async function handleDone() {
+    agentMsg.displayText = (agentMsg.displayText || agentMsg.text || "").trim();
 
-  function handleDone() {
-    // Clean up display text
-    agentMsg.displayText = (agentMsg.displayText || agentMsg.text || "")
-      .replace(/OUTPUT_READY:\S+/g, "").trim();
+    await fetchMediaLibrary();
+    const newOutputs = state.mediaItems.filter(
+      (m) => m.type === "output" && !preChatOutputIds.has(m.id)
+    );
+    if (newOutputs.length > 0) {
+      const latest = newOutputs.reduce((a, b) =>
+        (a.createdAt || 0) > (b.createdAt || 0) ? a : b
+      );
+      outputId = latest.id;
+      state.latestOutputId = latest.id;
+      agentMsg.outputId = latest.id;
+      previewClip(latest.id);
+    }
+
+    updateAgentMessage();
 
     cleanup();
     chatStatus.textContent = outputId ? "Done" : "";
@@ -1183,11 +1193,6 @@ function sendChatMessage() {
     }
 
     collapseActivityInLastMessage();
-
-    // Ensure output is loaded into preview
-    if (outputId) {
-      previewClip(outputId);
-    }
   }
 
   function handleError(data) {
@@ -1203,7 +1208,6 @@ function sendChatMessage() {
     piApi.removeAllListeners("agent:done");
     piApi.removeAllListeners("agent:error");
     piApi.removeAllListeners("agent:event");
-    piApi.removeAllListeners("agent:output-ready");
 
     state.processing = false;
     state.chatStreaming = false;
@@ -1213,7 +1217,6 @@ function sendChatMessage() {
 
   piApi.on("agent:delta", handleDelta);
   piApi.on("agent:event", handleEvent);
-  piApi.on("agent:output-ready", handleOutputReady);
   piApi.on("agent:done", handleDone);
   piApi.on("agent:error", handleError);
 
@@ -1315,7 +1318,7 @@ function renderChatMessages() {
       html += '<div class="chat-activity"></div>';
     }
 
-    const displayText = msg.role === "agent" ? (msg.displayText || msg.text || "").replace(/OUTPUT_READY:\S+/g, "").trim() : msg.text;
+    const displayText = msg.role === "agent" ? (msg.displayText || msg.text || "") : msg.text;
     html += `<div class="chat-msg-text" ${!displayText ? 'style="display:none"' : ""}>${escapeHtml(displayText)}</div>`;
 
     if (msg.role === "agent" && state.chatStreaming && msg === state.chatMessages[state.chatMessages.length - 1]) {
@@ -1403,6 +1406,12 @@ function renderActivityInline(container, activities) {
       html += `<div class="chat-activity-item chat-activity-tool-fail">`
         + `<span class="chat-activity-label">${escapeHtml(t.name)}</span>`
         + `<span class="chat-activity-detail">failed</span></div>`;
+      if (t.errorDetail) {
+        html += `<details class="chat-activity-error">`
+          + `<summary>error detail</summary>`
+          + `<pre>${escapeHtml(t.errorDetail)}</pre>`
+          + `</details>`;
+      }
     });
   } else {
     // After done: compact summary

@@ -1185,6 +1185,33 @@ html, body {
   color: var(--error);
 }
 
+.chat-activity-error {
+  font-size: 11px;
+  margin: 2px 0 6px 8px;
+  color: var(--text-secondary);
+}
+
+.chat-activity-error summary {
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.chat-activity-error pre {
+  margin: 4px 0 0 0;
+  padding: 6px 8px;
+  background: var(--error-bg, rgba(255, 0, 0, 0.04));
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--error, inherit);
+}
+
 .chat-activity-label {
   font-weight: 600;
   font-size: 10px;

@@ -5,7 +5,8 @@ import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import { unlink, access } from "fs/promises";
 import { join } from "path";
-import { getDataDir, getPublicDir } from "./paths.js";
+import { getLibraryDir, getPublicDir } from "./paths.js";
+import { readTree } from "./libraryTree.js";
 import * as registry from "./mediaRegistry.js";
 import {
   MAX_FILE_SIZE,
@@ -87,7 +88,8 @@ export function createApp(): Hono {
 
   // --- Media API ---
 
-  app.get("/api/media", (c) => {
+  app.get("/api/media", async (c) => {
+    await registry.scanDisk();
     return c.json({ items: registry.getAll() });
   });
 
@@ -190,38 +192,10 @@ export function createApp(): Hono {
             controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
           };
 
-          let accumulatedText = "";
-          let outputDetected = false;
-
           handleChat(
             prompt,
             (text) => {
               send("delta", { text });
-              accumulatedText += text;
-
-              if (!outputDetected && accumulatedText.includes("OUTPUT_READY:")) {
-                outputDetected = true;
-                const match = accumulatedText.match(/OUTPUT_READY:(\S+)/);
-                if (match) {
-                  const outputFilename = match[1];
-                  const jobId = generateJobId();
-                  const url = `/media/output/${outputFilename}`;
-                  registry
-                    .register({
-                      id: jobId,
-                      filename: outputFilename,
-                      type: "output",
-                      label:
-                        description.slice(0, 60) +
-                        (description.length > 60 ? "..." : ""),
-                      url,
-                      description,
-                    })
-                    .then(() => {
-                      send("output-ready", { url, id: jobId });
-                    });
-                }
-              }
             },
             () => {
               send("done", {});
@@ -254,16 +228,16 @@ export function createApp(): Hono {
     return c.json({ ok: true });
   });
 
-  // Serve media files (uploads + output) — reject path traversal.
-  // Use a custom handler so the data dir is read lazily each request
-  // (it lives under userData in the packaged app, not cwd).
+  // Serve media files (uploads + outputs) — reject path traversal.
+  // URL keeps singular "output" segment; disk folder is "outputs".
   app.get("/media/*", async (c) => {
     const reqPath = c.req.path;
     if (reqPath.includes("..")) {
       return c.json({ error: "Invalid path" }, 400);
     }
-    const rel = reqPath.replace(/^\/media\//, "");
-    const abs = join(getDataDir(), rel);
+    let rel = reqPath.replace(/^\/media\//, "");
+    rel = rel.replace(/^output\//, "outputs/");
+    const abs = join(getLibraryDir(), rel);
     try {
       const stats = statSync(abs);
       if (!stats.isFile()) return c.json({ error: "Not found" }, 404);
@@ -274,6 +248,13 @@ export function createApp(): Hono {
     } catch {
       return c.json({ error: "Not found" }, 404);
     }
+  });
+
+  // --- Library tree ---
+
+  app.get("/api/library", (c) => {
+    const root = getLibraryDir();
+    return c.json({ root, items: readTree(root) });
   });
 
   // Static files (SPA) — after API routes. Root resolved at request time

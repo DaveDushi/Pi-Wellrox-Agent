@@ -20,6 +20,44 @@ export function getStagedBashPath(): string {
   return join(managedGitDir(), "usr", "bin", "bash.exe");
 }
 
+/**
+ * Directories that must be on PATH for bash to find coreutils (ls, tail, head,
+ * cat, grep, sed, awk, etc). Git for Windows' own launcher injects these
+ * automatically; we bypass that launcher by spawning bash.exe directly, so we
+ * have to inject them ourselves.
+ */
+export function getShellPathEntries(): string[] {
+  if (process.platform !== "win32") return [];
+  const root = managedGitDir();
+  return [
+    join(root, "usr", "bin"),
+    join(root, "mingw64", "bin"),
+    join(root, "bin"),
+  ];
+}
+
+/**
+ * Prepend the bundled MinGit PATH entries to process.env.PATH so any spawned
+ * bash inherits them (pi-coding-agent's getShellEnv() spreads process.env).
+ * Idempotent — safe to call more than once.
+ */
+export function injectShellPathEntries(): void {
+  const entries = getShellPathEntries().filter((dir) => existsSync(dir));
+  if (entries.length === 0) return;
+
+  const pathKey =
+    Object.keys(process.env).find((k) => k.toLowerCase() === "path") ?? "PATH";
+  const sep = process.platform === "win32" ? ";" : ":";
+  const current = process.env[pathKey] ?? "";
+  const existing = new Set(current.split(sep).filter(Boolean));
+
+  const toAdd = entries.filter((dir) => !existing.has(dir));
+  if (toAdd.length === 0) return;
+
+  process.env[pathKey] = [...toAdd, current].filter(Boolean).join(sep);
+  console.log(`[portableShell] prepended to PATH: ${toAdd.join(", ")}`);
+}
+
 async function readVersion(dir: string): Promise<string | null> {
   try {
     const buf = await readFile(join(dir, VERSION_MARKER), "utf8");

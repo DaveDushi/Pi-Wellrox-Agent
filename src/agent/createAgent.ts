@@ -102,13 +102,51 @@ export type AgentEvent =
   | { kind: "thinking"; text: string }
   | { kind: "tool_start"; tool: string }
   | { kind: "tool_update"; text: string }
-  | { kind: "tool_end"; tool: string; success: boolean }
+  | {
+      kind: "tool_end";
+      tool: string;
+      success: boolean;
+      errorDetail?: string;
+    }
   | { kind: "turn_start" }
   | { kind: "turn_end" }
   | { kind: "compaction_start" }
   | { kind: "compaction_end" }
   | { kind: "retry_start" }
   | { kind: "retry_end" };
+
+function extractToolErrorDetail(result: unknown): string | undefined {
+  if (!result) return undefined;
+  if (result instanceof Error) {
+    return result.message;
+  }
+  if (typeof result === "string") {
+    return result;
+  }
+  if (typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    if (typeof r.message === "string") return r.message as string;
+    if (Array.isArray(r.content)) {
+      const parts = r.content
+        .map((c: any) =>
+          c && typeof c === "object" && typeof c.text === "string" ? c.text : ""
+        )
+        .filter(Boolean);
+      if (parts.length > 0) return parts.join("\n");
+    }
+    try {
+      return JSON.stringify(result);
+    } catch {
+      return undefined;
+    }
+  }
+  return String(result);
+}
+
+function tailLines(text: string, maxChars = 600): string {
+  if (text.length <= maxChars) return text;
+  return "…" + text.slice(text.length - maxChars);
+}
 
 export async function handleChat(
   userMessage: string,
@@ -157,13 +195,21 @@ export async function handleChat(
             onEvent?.({ kind: "tool_update", text: String(ev.partialResult) });
           }
           break;
-        case "tool_execution_end":
+        case "tool_execution_end": {
+          const isError = !!ev.isError;
+          let errorDetail: string | undefined;
+          if (isError) {
+            const raw = extractToolErrorDetail(ev.result);
+            if (raw) errorDetail = tailLines(raw);
+          }
           onEvent?.({
             kind: "tool_end",
             tool: ev.toolName ?? "unknown",
-            success: !ev.isError,
+            success: !isError,
+            errorDetail,
           });
           break;
+        }
         case "turn_start":
           onEvent?.({ kind: "turn_start" });
           break;

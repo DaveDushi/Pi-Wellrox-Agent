@@ -1,7 +1,7 @@
 import { join } from "path";
-import { readdir, readFile, writeFile } from "fs/promises";
+import { readdir, readFile, writeFile, stat } from "fs/promises";
 import { UPLOAD_DIR, OUTPUT_DIR } from "./fileManager.js";
-import { getDataDir } from "./paths.js";
+import { getUserDataDir } from "./paths.js";
 
 export interface MediaItem {
   id: string;
@@ -19,7 +19,7 @@ export interface MediaItem {
 }
 
 function sidecarPath(): string {
-  return join(getDataDir(), "media-meta.json");
+  return join(getUserDataDir(), "media-meta.json");
 }
 
 const items = new Map<string, MediaItem>();
@@ -48,26 +48,34 @@ function saveSidecar(): Promise<void> {
   return writeChain;
 }
 
-export async function init(): Promise<void> {
-  const saved = await loadSidecar();
-
-  for (const [id, item] of Object.entries(saved)) {
-    items.set(id, item);
+async function fileCreatedAt(path: string): Promise<number> {
+  try {
+    const s = await stat(path);
+    return s.mtimeMs || Date.now();
+  } catch {
+    return Date.now();
   }
+}
+
+export async function scanDisk(): Promise<void> {
+  let changed = false;
+  const seen = new Set<string>();
 
   try {
     const uploadFiles = await readdir(UPLOAD_DIR);
     for (const f of uploadFiles) {
       const id = f.split(".")[0];
+      seen.add(id);
       if (!items.has(id)) {
         items.set(id, {
           id,
           filename: f,
           type: "upload",
           label: f,
-          createdAt: Date.now(),
+          createdAt: await fileCreatedAt(join(UPLOAD_DIR, f)),
           url: `/media/uploads/${f}`,
         });
+        changed = true;
       }
     }
   } catch (e) {
@@ -77,23 +85,41 @@ export async function init(): Promise<void> {
   try {
     const outputFiles = await readdir(OUTPUT_DIR);
     for (const f of outputFiles) {
-      const match = f.match(/^result-(.+)\.mp4$/);
-      if (match && !items.has(match[1])) {
-        items.set(match[1], {
-          id: match[1],
+      const id = `out-${f}`;
+      seen.add(id);
+      if (!items.has(id)) {
+        items.set(id, {
+          id,
           filename: f,
           type: "output",
           label: f,
-          createdAt: Date.now(),
+          createdAt: await fileCreatedAt(join(OUTPUT_DIR, f)),
           url: `/media/output/${f}`,
         });
+        changed = true;
       }
     }
   } catch (e) {
     console.warn("[mediaRegistry] Failed to scan outputs:", e);
   }
 
-  await saveSidecar();
+  // Drop registry entries whose backing file is gone.
+  for (const [id, item] of items) {
+    if ((item.type === "upload" || item.type === "output") && !seen.has(id)) {
+      items.delete(id);
+      changed = true;
+    }
+  }
+
+  if (changed) await saveSidecar();
+}
+
+export async function init(): Promise<void> {
+  const saved = await loadSidecar();
+  for (const [id, item] of Object.entries(saved)) {
+    items.set(id, item);
+  }
+  await scanDisk();
 }
 
 export function getAll(): MediaItem[] {

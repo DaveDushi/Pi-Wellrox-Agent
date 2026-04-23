@@ -9,6 +9,7 @@ import {
 } from "./ffmpeg.js";
 import {
   ensurePortableShellInstalled,
+  injectShellPathEntries,
   writeShellPathSetting,
 } from "./portableShell.js";
 import { startServer } from "../main.js";
@@ -26,11 +27,7 @@ import {
   selectModel,
 } from "../agent/startup.js";
 import * as registry from "../mediaRegistry.js";
-import {
-  OUTPUT_DIR,
-  generateJobId,
-  getUploadPath,
-} from "../fileManager.js";
+import { OUTPUT_DIR, getUploadPath } from "../fileManager.js";
 import { cleanupAllTempDirs } from "../tempManager.js";
 import { initUpdater } from "./updater.js";
 
@@ -81,7 +78,10 @@ function registerIpcHandlers() {
   );
 
   // Media CRUD
-  ipcMain.handle("media:list", () => ({ items: registry.getAll() }));
+  ipcMain.handle("media:list", async () => {
+    await registry.scanDisk();
+    return { items: registry.getAll() };
+  });
 
   ipcMain.handle(
     "media:update",
@@ -128,39 +128,10 @@ function registerIpcHandlers() {
     }
 
     const prompt = description.trim();
-    let accumulatedText = "";
-    let outputDetected = false;
 
     await handleChat(
       prompt,
-      (text) => {
-        sender.send("agent:delta", { text });
-        accumulatedText += text;
-
-        if (!outputDetected && accumulatedText.includes("OUTPUT_READY:")) {
-          outputDetected = true;
-          const match = accumulatedText.match(/OUTPUT_READY:(\S+)/);
-          if (match) {
-            const outputFilename = match[1];
-            const jobId = generateJobId();
-            const url = `/media/output/${outputFilename}`;
-            registry
-              .register({
-                id: jobId,
-                filename: outputFilename,
-                type: "output",
-                label:
-                  description.slice(0, 60) +
-                  (description.length > 60 ? "..." : ""),
-                url,
-                description,
-              })
-              .then(() => {
-                sender.send("agent:output-ready", { url, id: jobId });
-              });
-          }
-        }
-      },
+      (text) => sender.send("agent:delta", { text }),
       () => sender.send("agent:done", {}),
       (error) => sender.send("agent:error", { message: error.message }),
       (agentEvent: AgentEvent) => sender.send("agent:event", agentEvent)
@@ -205,8 +176,14 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    const localData =
+      process.platform === "win32" && process.env.LOCALAPPDATA
+        ? join(process.env.LOCALAPPDATA, app.getName())
+        : app.getPath("userData");
+
     configurePaths({
       userData: app.getPath("userData"),
+      localData,
       appRoot: app.getAppPath(),
       resources: app.isPackaged ? process.resourcesPath : app.getAppPath(),
     });
@@ -220,6 +197,7 @@ if (!gotLock) {
     const bashPath = await ensurePortableShellInstalled();
     if (bashPath) {
       await writeShellPathSetting(bashPath);
+      injectShellPathEntries();
     }
 
     registerIpcHandlers();
